@@ -6,17 +6,33 @@
 #include <sched.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <limits.h>
+
 #define STACK_SIZE (1024 * 1024)    // Stack size for cloned child
 
 int childFunc(void *arg) {
     const char* new_hostname = "container";
     if (sethostname(new_hostname, strlen(new_hostname)) != 0) {
-        std::cerr << "Failed to set hostname" << std::endl;
+        std::cout << "Failed to set hostname" << std::endl;
         return -1;
     }
+    // get the current working directory
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+        std::cout << "Current working directory: " << cwd << std::endl;
+    } else {
+        std::cout << "getcwd() error" << std::endl;
+        return -1;
+    }
+    std::string newRoot = "/home/tobias/projects/codingChallenges/dockerClone/test/alpineTest";
+    if (chroot(newRoot.c_str()) != 0) {
+        std::cout << "Failed to change root directory" << std::endl;
+        return -1;
+    }
+
     // Execute the command received in arg
     char *command = (char *)arg;
-    // std::cout << "command = " << command << std::endl;
+    std::cout << "command = " << command << std::endl;
     int returnFromCommand = system(command);
     return returnFromCommand;
 }
@@ -28,26 +44,6 @@ int childFunc(void *arg) {
 // }
 
 int main(int argc, char *argv[]) {
-    // if (strcmp(argv[1], "run") == 0) {
-
-    //     // first create a new namespace, so the container is isolated from the host
-    //     // then run the command in the new namespace
-    //     int returnFromUnshare = system("unshare -u");
-    //     if (returnFromUnshare != 0) {
-    //         std::cerr << "Failed to create new UTS namespace" << std::endl;
-    //         return returnFromUnshare;
-    //     }
-    //     // set the hostname for the new UTS namespace
-    //     const char* new_hostname = "container";
-    //     if (sethostname(new_hostname, strlen(new_hostname)) != 0) {
-    //         std::cerr << "Failed to set hostname" << std::endl;
-    //         return -1;
-    //     }
-
-
-    //     // std::cout << "command = " << command << std::endl;
-
-    // }
     int returnCodeOfCommandExecution = 0;
     if (strcmp(argv[1], "run") == 0) {
         char *stack;                    // Start of stack buffer
@@ -76,6 +72,6 @@ int main(int argc, char *argv[]) {
 
         wait(NULL); // Wait for child
     }
-    // std::cout << "returnCodeOfCommandExecution = " << returnCodeOfCommandExecution << std::endl;
+    std::cout << "returnCodeOfCommandExecution = " << returnCodeOfCommandExecution << std::endl;
     return returnCodeOfCommandExecution;
 }
