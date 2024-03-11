@@ -3,10 +3,13 @@
 #include <string>
 #include <iostream>
 #include <unistd.h>
+#include <limits.h>
 #include <sched.h>
 #include <signal.h>
 #include <sys/wait.h>
-#include <limits.h>
+#include <sys/mount.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #define STACK_SIZE (1024 * 1024)    // Stack size for cloned child
 
@@ -16,6 +19,7 @@ int childFunc(void *arg) {
         std::cout << "Failed to set hostname" << std::endl;
         return -1;
     }
+
     // get the current working directory
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -30,10 +34,34 @@ int childFunc(void *arg) {
         return -1;
     }
 
+    int returnOfUnshareCall = unshare(CLONE_NEWNS);
+
+    if (returnOfUnshareCall != 0) {
+        std::cout << "Failed to unshare" << std::endl;
+        return -1;
+    }
+
+    // Create /proc in the new root
+    mkdir("/proc", 0555);
+    // mount proc
+    int mountReturn = mount("proc", "/proc", "proc", 0, NULL);
+
+    if (mountReturn != 0) {
+        std::cout << "Failed to mount /proc" << std::endl;
+        return -1;
+    }
+
     // Execute the command received in arg
     char *command = (char *)arg;
     std::cout << "command = " << command << std::endl;
     int returnFromCommand = system(command);
+
+    // unmount the proc-vfs when terminating the container
+    if (umount("/proc") != 0) {
+        std::cout << "Failed to unmount /proc" << std::endl;
+        return -1;
+    }
+
     return returnFromCommand;
 }
 // void setHostnameToContainer(){
@@ -68,10 +96,13 @@ int main(int argc, char *argv[]) {
         std::strcpy(cStr, command.c_str());
         // Create child that has its own UTS namespace;
         // child commences execution in childFunc()
-        returnCodeOfCommandExecution = clone(childFunc, stackTop, CLONE_NEWUTS | SIGCHLD, cStr);
+        returnCodeOfCommandExecution = clone(childFunc, stackTop, CLONE_NEWUTS | CLONE_NEWPID | SIGCHLD, cStr);
 
         wait(NULL); // Wait for child
     }
     std::cout << "returnCodeOfCommandExecution = " << returnCodeOfCommandExecution << std::endl;
+    
+
+    
     return returnCodeOfCommandExecution;
 }
